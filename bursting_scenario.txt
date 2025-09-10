@@ -1,0 +1,90 @@
+phone number missing bursting scenario:
+
+
+SELECT
+    ppf.PERSON_ID,
+    pea.EMAIL_ADDRESS
+FROM PER_ALL_PEOPLE_F ppf
+LEFT JOIN PER_PHONES ph 
+    ON ppf.PERSON_ID = ph.PERSON_ID
+LEFT JOIN PER_EMAIL_ADDRESSES pea 
+    ON ppf.PERSON_ID = pea.PERSON_ID
+WHERE (ph.PHONE_NUMBER IS NULL OR TRIM(ph.PHONE_NUMBER) = '')
+  AND TRUNC(SYSDATE) BETWEEN TRUNC(ppf.EFFECTIVE_START_DATE) AND TRUNC(ppf.EFFECTIVE_END_DATE)
+  AND pea.EMAIL_ADDRESS IS NOT NULL
+
+--------------------------------------------------------------------------------------------------------------
+Bursting query:
+
+SELECT DISTINCT
+    ppf.PERSON_ID AS "KEY",                                -- Split by employee
+    'MissingPhoneTemplate' AS TEMPLATE,                    -- Template name
+    'en-US' AS LOCALE,                                     -- Language
+    'PDF' AS OUTPUT_FORMAT,                                -- Format
+    'EMAIL' AS DEL_CHANNEL,                                -- Delivery method
+    pea.EMAIL_ADDRESS AS PARAMETER1,                       -- To: Employee email
+    'hr.team@yourcompany.com' AS PARAMETER2,               -- Cc (optional)
+    'support@yourcompany.com' AS PARAMETER3,               -- Bcc (optional)
+    'Update Your Mobile Number' AS PARAMETER4,             -- Email Subject
+    'Hi ' || ppf.FULL_NAME || CHR(13) ||                   -- Email Body
+    'Our records show your mobile number is missing.' || CHR(13) ||
+    'Please update it in Fusion HCM.' AS PARAMETER5,
+    'true' AS PARAMETER6,                                  -- Attach report
+    'donotreply@yourcompany.com' AS PARAMETER7             -- From address
+FROM PER_ALL_PEOPLE_F ppf
+LEFT JOIN PER_PHONES ph 
+    ON ppf.PERSON_ID = ph.PERSON_ID
+LEFT JOIN PER_EMAIL_ADDRESSES pea 
+    ON ppf.PERSON_ID = pea.PERSON_ID
+WHERE (ph.PHONE_NUMBER IS NULL OR TRIM(ph.PHONE_NUMBER) = '')
+  AND TRUNC(SYSDATE) BETWEEN TRUNC(ppf.EFFECTIVE_START_DATE) AND TRUNC(ppf.EFFECTIVE_END_DATE)
+  AND ppf.CURRENT_EMPLOYEE_FLAG = 'Y'
+  AND pea.EMAIL_ADDRESS IS NOT NULL
+
+
+----------------------------------------
+bursting allows you to split a single report into multiple outputs based on key and deliver each output to different destinations like email, printer, or FTP.
+first create data model with required datasets - tools - reports & analytics - browse catalog - create data model - provide main query - save as sample data - create report (upload rtf template)
+
+now go to data model - create bursting definition -  provide name - under bursting  we need to give split by(person_id) & deliver by(email_address).
+Create a Delivery Query with columns like KEY(Delivery key and must match the Deliver By element), TEMPLATE, LOCALE, OUTPUT_FORMAT(PDF,RTF,EXCEL, PPT, XML,CVS, ETEXT), DELIVERY_CHANNEL(EMAIL/FTP), EMAIL.
+
+delivery channel parameter: 
+email address,cc, from, subject, message body, attachment value, reply to, bcc
+
+Attach the bursting definition to the report
+
+Schedule the report using "Bursting Report Job".
+
+To achieve this, I developed a query
+Person id, person number, person email, person name and in the where condition is where phone number is null.
+Then we can go with bursting concept.
+Here we have 2 concepts, split by(on which basis we are splitting the information) & deliver by(who wants to receive the notification)
+We have multiple parameters and key value is person_id
+Output is pdf, template rtf, parameter 1-to, cc, bcc,subject, body, attachment is true/false.
+After this we will schedule a report automatically whomever not updated their phone number they will receive notification.
+
+select schedule - choose frequency(daily/weekly) - parameters(if any) - check the box for enable bursting under properties and submit the job.
+go to history of report to check the status.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+conditions: 
+
+- we cannot use select * in bursting query as bip requires specific columns like key, delivery address etc. cause issue due to duplicate or irrevelant columns
+- if delivery address is null for some records in bursting query, those records will be skipped during delivery. bip cannot send emails without valid devlivery address
+- Split By and Deliver By be the same column(e.g., PERSON_ID), but only if the delivery system can interpret that column correctly. If it's not an email address, delivery will fail unless mapped
+{{You need to map PERSON_ID to an email address within the bursting query — even if DELIVERY_BY is PERSON_ID, the actual delivery address must still be provided in the DELIVERY_ADDRESS or PARAMETER1 column}}
+- The report will fail to generate or deliver because BI Publisher won’t find the correct layout to use if the template name in the bursting query doesn’t match the layout name in the report.
+- handle duplicate column names in a bursting query that joins multiple date-effective tables - You must alias the columns explicitly (e.g., ppf.effective_start_date AS ppf_eff_start) to avoid duplication errors.
+- Yes, by dynamically setting OUTPUT_FORMAT per recipient in the bursting query can send different formats (PDF, Excel) to different recipients in the same bursting report
+- debug a bursting report that runs successfully but doesn’t send any emails : Confirm bursting is enabled in the report, Ensure the bursting query returns rows, Check if DELIVERY_ADDRESS is populated.
+- use conditional logic in the bursting query to customize the email subject or body - Yes, you can use SQL expressions (e.g., CASE, CHR, ||) to dynamically build PARAMETER4 (subject) and PARAMETER5 (body).
+- Use test email addresses in the bursting query or override DELIVERY_ADDRESS with a dummy email during testing.
+
+
+
+
+
+
+
+
