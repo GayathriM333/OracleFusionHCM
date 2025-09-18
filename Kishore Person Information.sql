@@ -228,3 +228,24 @@ and paam.location_id=HLA.location_id(+)
         (:P_DATE_START IS NULL OR :P_DATE_TO IS NULL)
         OR ppos.date_start BETWEEN :P_DATE_START AND :P_DATE_TO
     )
+------------------------------------------------------------------------------------------------------------------------
+
+Check Future-Dated Salaries:
+SELECT
+    ppf.person_number,
+    pa.assignment_number,
+    ps.effective_start_date,
+    ps.salary_amount
+FROM 
+    per_all_people_f ppf
+JOIN 
+    per_all_assignments_f pa ON ppf.person_id = pa.person_id
+JOIN 
+    per_pay_proposals ps ON pa.assignment_id = ps.assignment_id
+WHERE 
+    TRUNC(ps.effective_start_date) > TRUNC(SYSDATE)
+    AND ppf.person_number = 'E12345'  -- Replace with actual person number
+ORDER BY 
+    ps.effective_start_date;
+
+
